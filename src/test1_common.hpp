@@ -1,3 +1,5 @@
+#pragma once
+
 extern "C" {
 #include <tox/tox.h>
 //#include <tox.h>
@@ -87,7 +89,7 @@ class ToxService {
 			CALLBACK_REG(friend_lossy_packet);
 #undef CALLBACK_REG
 
-#if 0 // enable and fill for bootstrapping and tcp relays
+#if 1 // enable and fill for bootstrapping and tcp relays
 			// dht bootstrap
 			{
 				struct DHT_node {
@@ -139,7 +141,7 @@ class ToxService {
 			_friend_number = friend_number;
 		}
 
-		virtual void handle_lossy_packet(const uint8_t *data, size_t length) = 0;
+		virtual void handle_lossy_packet(uint32_t friend_number, const uint8_t *data, size_t length) = 0;
 };
 
 inline void log_cb(Tox*, TOX_LOG_LEVEL level, const char *file, uint32_t line, const char *func, const char *message, void *) {
@@ -167,9 +169,23 @@ inline void friend_request_cb(Tox *tox, const uint8_t *public_key, const uint8_t
 
 // custom packets
 inline void friend_lossy_packet_cb(Tox* /*tox*/, uint32_t friend_number, const uint8_t *data, size_t length, void* user_data) {
-#ifndef NDEBUG
-	std::cout << "friend_lossy_packet_cb " << length << "\n";
-#endif
-	static_cast<ToxService*>(user_data)->handle_lossy_packet(data, length);
+//#ifndef NDEBUG
+	//std::cout << "friend_lossy_packet_cb " << length << "\n";
+//#endif
+	static_cast<ToxService*>(user_data)->handle_lossy_packet(friend_number, data, length);
+}
+
+inline uint32_t get_milliseconds(void) {
+	auto time_raw = std::chrono::steady_clock::now();
+	using milli = std::ratio<1, 1000>;
+	auto time = std::chrono::duration_cast<std::chrono::duration<int64_t, milli>>(time_raw.time_since_epoch());
+	return static_cast<uint32_t>(time.count());
+}
+
+inline uint32_t get_microseconds(void) {
+	auto time_raw = std::chrono::steady_clock::now();
+	using micro = std::ratio<1, 1000000>;
+	auto time = std::chrono::duration_cast<std::chrono::duration<int64_t, micro>>(time_raw.time_since_epoch());
+	return static_cast<uint32_t>(time.count());
 }
 

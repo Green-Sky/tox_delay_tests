@@ -1,13 +1,54 @@
 #include "./test1_common.hpp"
+#include "toxcore/tox.h"
 
+#include <fstream>
 #include <limits>
 #include <chrono>
+#include <unordered_map>
 
 class ToxServiceSender : public ToxService {
+	std::ofstream _out_csv;
+
 	uint16_t _seq_id {0};
+
+	const uint16_t _window_max {100};
+	uint16_t _window {10};
+	size_t _max_pkgs_per_iteration {1};
+
+	//const uint16_t _payload_size_min {128};
+	//const uint16_t _payload_size_max {1024};
+
+	//uint16_t _payload_size {0};
+
+	struct PKGData {
+		uint32_t time_stamp {0};
+		uint16_t payload_size {0};
+		uint16_t window_size {0}; // window size at point of send
+	};
+	std::unordered_map<uint16_t, PKGData> _pkg_info;
+
 	public:
 
-	using ToxService::ToxService;
+	//using ToxService::ToxService;
+	ToxServiceSender(bool tcp_only) : ToxService(tcp_only) {
+		_out_csv.open(
+			"test1_delays_" +
+			std::to_string(std::time(nullptr)) +
+			(tcp_only ? "_tcp" : "_mixed") +
+			".csv"
+		);
+
+		// header
+		_out_csv << "time_stamp, seq_id, time_delta, window, payload_size, connection_type\n";
+		_out_csv.flush();
+	}
+
+	~ToxServiceSender(void) {
+		_out_csv.close();
+
+		tox_kill(_tox);
+		_tox = nullptr;
+	}
 
 	// blocks
 	void run(void) {
@@ -21,12 +62,7 @@ class ToxServiceSender : public ToxService {
 				continue;
 			}
 
-			if (_seq_id == std::numeric_limits<uint16_t>::max()) {
-				std::cout << "reached max seq, quitting\n";
-				break;
-			}
-
-			if (true) { // can send
+			if (_window > _pkg_info.size()) { // can send
 				// 192-254 for lossy
 				const size_t max_pkg_size = 1024 + 1;
 				uint8_t buffer[max_pkg_size] {200}; // fist byte is tox pkg id
@@ -36,26 +72,33 @@ class ToxServiceSender : public ToxService {
 				*reinterpret_cast<uint16_t*>(buffer+pkg_size) = _seq_id++;
 				pkg_size += sizeof(uint16_t);
 
-				{ // time stamp
-					// TODO: C
-					//std::chrono::time_point<std::chrono::steady_clock, std::chrono::duration<int64_t, std::ratio<1, 1000>>> time = std::chrono::steady_clock::now();
-					auto time_raw = std::chrono::steady_clock::now();
-					auto time = std::chrono::duration_cast<std::chrono::duration<int64_t, std::ratio<1, 1000>>>(time_raw.time_since_epoch());
-
-					*reinterpret_cast<uint32_t*>(buffer+pkg_size) = time.count();
-					pkg_size += sizeof(uint32_t);
-				}
+				// time stamp
+				auto time_stamp = get_microseconds();
+				*reinterpret_cast<uint32_t*>(buffer+pkg_size) = time_stamp;
+				pkg_size += sizeof(uint32_t);
 
 				Tox_Err_Friend_Custom_Packet e_fcp = TOX_ERR_FRIEND_CUSTOM_PACKET_OK;
 				tox_friend_send_lossy_packet(_tox, *_friend_number, buffer, pkg_size, &e_fcp);
 				if (e_fcp != TOX_ERR_FRIEND_CUSTOM_PACKET_OK) {
 					std::cerr << "error sending lossy pkg " << e_fcp << "\n";
+				} else {
+					_pkg_info[_seq_id - 1] = {
+						time_stamp,
+						0,
+						_window
+					};
 				}
 			}
+
+			if (_seq_id == std::numeric_limits<uint16_t>::max()) {
+				std::cout << "reached max seq, quitting\n";
+				break;
+			}
+
 		}
 	}
 
-	void handle_lossy_packet(const uint8_t *data, size_t length) override {
+	void handle_lossy_packet(uint32_t friend_number, const uint8_t *data, size_t length) override {
 		if (length < 2) {
 			return;
 		}
@@ -63,6 +106,53 @@ class ToxServiceSender : public ToxService {
 		if (data[0] != 200) {
 			return; // invalid channel
 			std::cerr << "invalid channel " << (int) data[0] << "\n";
+		}
+
+		auto tc = tox_friend_get_connection_status(_tox, friend_number, nullptr);
+
+		// ack pkg
+		// list of:
+		// - uint16_t seq_id
+		// if microseconds:
+		// - int32_t time delta
+		// else if milliseconds:
+		// - int16_t time_delta
+		// time_delta IS SIGNED! different computers clocks might not be sync
+		size_t curr_i = 1;
+		while (curr_i < length) {
+			uint16_t seq_id = *reinterpret_cast<const uint16_t*>(data+curr_i);
+			curr_i += sizeof(uint16_t);
+
+#if 1
+			int32_t time_delta = *reinterpret_cast<const int32_t*>(data+curr_i);
+			curr_i += sizeof(int32_t);
+#else
+			int16_t time_delta = *reinterpret_cast<const int16_t*>(data+curr_i);
+			curr_i += sizeof(int16_t);
+#endif
+
+			if (!_pkg_info.count(seq_id)) {
+				std::cout << "unk pkg of id " << seq_id << ", ignoring..\n";
+			} else {
+				const auto& pkg_info = _pkg_info[seq_id];
+				std::cout << "mesurement:"
+					" ts: " << pkg_info.time_stamp <<
+					" id: " << seq_id <<
+					" d: " << time_delta <<
+					" w: " << pkg_info.window_size <<
+					" ps: " << pkg_info.payload_size <<
+					" s: " << tc <<
+					"\n";
+				_out_csv
+					<< pkg_info.time_stamp << ", "
+					<< seq_id << ", "
+					<< time_delta << ", "
+					<< pkg_info.window_size << ", "
+					<< pkg_info.payload_size << ", "
+					<< tc << "\n";
+				_out_csv.flush();
+				_pkg_info.erase(seq_id);
+			}
 		}
 	}
 };

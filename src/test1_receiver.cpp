@@ -19,8 +19,8 @@ class ToxServiceReceiver : public ToxService {
 		}
 	}
 
-	void handle_lossy_packet(const uint8_t *data, size_t length) override {
-		const size_t min_packet_len = 
+	void handle_lossy_packet(uint32_t friend_number, const uint8_t *data, size_t length) override {
+		const size_t min_packet_len =
 			1 // tox_pkg_id
 			+ sizeof(uint16_t) // seq id
 			+ sizeof(uint32_t) // sender time
@@ -43,9 +43,24 @@ class ToxServiceReceiver : public ToxService {
 
 		// we assume little endian
 		uint16_t pk_seq_id = *reinterpret_cast<const uint16_t*>(data+1);
-		uint16_t pk_sender_time = *reinterpret_cast<const uint32_t*>(data+3);
+		uint32_t pk_sender_time = *reinterpret_cast<const uint32_t*>(data+3);
 
-		std::cout << "got packet " << pk_seq_id << " t:" << pk_sender_time << "\n";
+		int32_t time_delta = static_cast<int64_t>(get_microseconds()) - pk_sender_time;
+
+		std::cout << "got packet " << pk_seq_id << " t:" << pk_sender_time << " d:" << time_delta << "\n";
+
+		{ // tmp send ack directly
+			uint8_t buffer[1 + sizeof(uint16_t) + sizeof(int32_t)] {200};
+			size_t pkg_size {1};
+
+			*reinterpret_cast<uint16_t*>(buffer+pkg_size) = pk_seq_id;
+			pkg_size += sizeof(uint16_t);
+
+			*reinterpret_cast<int32_t*>(buffer+pkg_size) = time_delta;
+			pkg_size += sizeof(int32_t);
+
+			tox_friend_send_lossy_packet(_tox, friend_number, buffer, pkg_size, nullptr);
+		}
 	}
 };
 
