@@ -62,6 +62,20 @@ class ToxServiceSender : public ToxService {
 				continue;
 			}
 
+			{ // do timeout
+				const uint32_t timeout {1000000}; // 1sec
+				auto time_stamp_now = get_microseconds();
+
+				for (auto it = _pkg_info.begin(); it != _pkg_info.end();) {
+					if (time_stamp_now - it->second.time_stamp >= timeout) {
+						std::cout << "pkg " << it->first << " timed out!\n";
+						it = _pkg_info.erase(it);
+					} else {
+						it++;
+					}
+				}
+			}
+
 			if (_window > _pkg_info.size()) { // can send
 				// 192-254 for lossy
 				const size_t max_pkg_size = 1024 + 1;
