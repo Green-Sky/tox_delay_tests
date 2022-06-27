@@ -102,8 +102,8 @@ class ToxService {
 				DHT_node nodes[] =
 				{
 					// own bootsrap node, to reduce load
-					{"tox.plastiras.org",					33445,	"8E8B63299B3D520FB377FE5100E65E3322F7AE5B20A0ACED2981769FC5B43725", {}}, // 14
-					//{"tox2.plastiras.org",					33445,	"B6626D386BE7E3ACA107B46F48A5C4D522D29281750D44A0CBA6A2721E79C951", {}}, // 14
+					//{"tox.plastiras.org",					33445,	"8E8B63299B3D520FB377FE5100E65E3322F7AE5B20A0ACED2981769FC5B43725", {}}, // 14
+					{"tox2.plastiras.org",					33445,	"B6626D386BE7E3ACA107B46F48A5C4D522D29281750D44A0CBA6A2721E79C951", {}}, // 14
 				};
 
 				for (size_t i = 0; i < sizeof(nodes)/sizeof(DHT_node); i ++) {
