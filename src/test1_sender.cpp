@@ -11,14 +11,16 @@ class ToxServiceSender : public ToxService {
 
 	uint16_t _seq_id {0};
 
-	const uint16_t _window_max {100};
-	uint16_t _window {10};
-	size_t _max_pkgs_per_iteration {1};
+	//const uint16_t _window_max {100};
+	uint16_t _window {200};
+	//size_t _max_pkgs_per_iteration {1};
+	//size_t _window_increase_counter {0};
 
 	//const uint16_t _payload_size_min {128};
-	//const uint16_t _payload_size_max {1024};
+	const uint16_t _payload_size_max {1024};
 
-	//uint16_t _payload_size {0};
+	uint16_t _payload_size {1};
+	size_t _payload_increase_counter {0};
 
 	struct PKGData {
 		uint32_t time_stamp {0};
@@ -82,6 +84,9 @@ class ToxServiceSender : public ToxService {
 				uint8_t buffer[max_pkg_size] {200}; // fist byte is tox pkg id
 				size_t pkg_size {1};
 
+				//_window_increase_counter++;
+				_payload_increase_counter++;
+
 				// seq_id
 				*reinterpret_cast<uint16_t*>(buffer+pkg_size) = _seq_id++;
 				pkg_size += sizeof(uint16_t);
@@ -91,6 +96,9 @@ class ToxServiceSender : public ToxService {
 				*reinterpret_cast<uint32_t*>(buffer+pkg_size) = time_stamp;
 				pkg_size += sizeof(uint32_t);
 
+				// TODO: actually fill with random data, rn its uninit mem
+				pkg_size += _payload_size;
+
 				Tox_Err_Friend_Custom_Packet e_fcp = TOX_ERR_FRIEND_CUSTOM_PACKET_OK;
 				tox_friend_send_lossy_packet(_tox, *_friend_number, buffer, pkg_size, &e_fcp);
 				if (e_fcp != TOX_ERR_FRIEND_CUSTOM_PACKET_OK) {
@@ -98,17 +106,28 @@ class ToxServiceSender : public ToxService {
 				} else {
 					_pkg_info[_seq_id - 1] = {
 						time_stamp,
-						0,
+						_payload_size,
 						_window
 					};
 				}
 			}
-
-			if (_seq_id == std::numeric_limits<uint16_t>::max()) {
+if (_seq_id == std::numeric_limits<uint16_t>::max()) {
 				std::cout << "reached max seq, quitting\n";
 				break;
 			}
 
+#if 0
+			// every 100pkgs increase window by 1
+			if (_window_increase_counter >= 100) {
+				_window_increase_counter = 0;
+				_window++;
+			}
+#endif
+			// every 100pkgs increase payload by 1
+			if (_payload_increase_counter >= 25 && _payload_size < _payload_size_max) {
+				_payload_increase_counter = 0;
+				_payload_size++;
+			}
 		}
 	}
 
